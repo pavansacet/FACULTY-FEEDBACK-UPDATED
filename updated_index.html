@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CSE Faculty Feedback System</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial; background:#eef2f7; margin:0; padding:20px;}
+    h2 { text-align:center; }
+    .card { background:#fff; padding:15px; margin:10px auto; border-radius:10px; max-width:700px; box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+    input, button, textarea, select { width:100%; padding:10px; margin:5px 0;}
+    button { background:#007bff; color:#fff; border:none; border-radius:5px;}
+    textarea { resize:vertical; }
+    .hidden { display:none; }
+    .progress { color:green; font-weight:bold; }
+  </style>
+</head>
+
+<body>
+
+<h2>🎓 CSE Faculty Feedback System</h2>
+
+<!-- STUDENT LOGIN -->
+<div id="login" class="card">
+  <h3>Student Login</h3>
+  <input id="search" placeholder="Search student..." onkeyup="filterStudents()">
+  <select id="studentSelect" size="5"></select>
+  <button onclick="login()">Login</button>
+  <button onclick="showAdminLogin()">Admin</button>
+</div>
+
+<!-- ADMIN LOGIN -->
+<div id="adminLogin" class="hidden">
+  <div class="card">
+    <h3>Admin Login</h3>
+    <input id="adminUser" placeholder="Username">
+    <input id="adminPass" type="password" placeholder="Password">
+    <button onclick="adminLogin()">Login</button>
+  </div>
+</div>
+
+<!-- FEEDBACK -->
+<div id="feedback" class="hidden">
+  <div class="card">
+    <h3>Feedback Form</h3>
+    <p id="progress" class="progress"></p>
+    <div id="subjects"></div>
+    <button onclick="submitFeedback()">Submit</button>
+  </div>
+</div>
+
+<!-- ADMIN DASHBOARD -->
+<div id="admin" class="hidden">
+  <div class="card">
+    <h3>Admin Dashboard</h3>
+    <canvas id="chart"></canvas>
+    <button onclick="downloadCSV()">Download CSV</button>
+  </div>
+</div>
+
+<script>
+
+// Sample Data
+const students = [
+  {roll:"21CSE001", name:"PAVAN", section:"CSE 1"},
+  {roll:"21CSE002", name:"RAVI", section:"CSE 1"}
+];
+
+const subjects = [
+  {id:"DS", name:"Data Structures", faculty:"Dr. Ramesh", section:"CSE 1", type:"theory"},
+  {id:"DBMS_LAB", name:"DBMS Lab", faculty:"Dr. Sita", section:"CSE 1", type:"lab"}
+];
+
+const theoryQuestions = [
+  "Teaching Clarity","Subject Knowledge","Interaction","Punctuality",
+  "Doubt Clarification","Syllabus Coverage","Real-world Examples","Overall Satisfaction"
+];
+
+const labQuestions = [
+  "Lab Equipment Availability","Experiment Explanation","Hands-on Support","Lab Organization",
+  "Safety Practices","Time Management","Record Guidance","Overall Lab Experience"
+];
+
+let currentStudent = null;
+let responses = {};
+
+const ADMIN = { username:"admin", password:"1234" };
+
+// Load dropdown
+window.onload = function(){
+  const select = document.getElementById("studentSelect");
+  students.forEach((s,i)=>{
+    let opt = document.createElement("option");
+    opt.value=i;
+    opt.text=`${s.roll} - ${s.name}`;
+    select.appendChild(opt);
+  });
+};
+
+function filterStudents(){
+  let val=document.getElementById("search").value.toLowerCase();
+  let options=document.getElementById("studentSelect").options;
+  for(let o of options){
+    o.style.display=o.text.toLowerCase().includes(val)?"":"none";
+  }
+}
+
+function login(){
+  const sel=document.getElementById("studentSelect");
+  if(sel.selectedIndex==-1){ alert("Select student"); return;}
+  const student=students[sel.value];
+
+  if(localStorage.getItem(student.roll)){
+    alert("Already Submitted!");
+    return;
+  }
+
+  currentStudent=student;
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("feedback").classList.remove("hidden");
+  loadSubjects();
+}
+
+function showAdminLogin(){
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("adminLogin").classList.remove("hidden");
+}
+
+function adminLogin(){
+  let u=document.getElementById("adminUser").value;
+  let p=document.getElementById("adminPass").value;
+
+  if(u===ADMIN.username && p===ADMIN.password){
+    document.getElementById("adminLogin").classList.add("hidden");
+    document.getElementById("admin").classList.remove("hidden");
+    loadAnalytics();
+  } else alert("Invalid Admin");
+}
+
+function loadSubjects(){
+  let container=document.getElementById("subjects");
+  container.innerHTML="";
+  let secSubjects=subjects.filter(s=>s.section===currentStudent.section);
+
+  secSubjects.forEach(sub=>{
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML=`<h4>${sub.name} (${sub.faculty})</h4>`+
+      ratingUI(sub)+
+      `<textarea onchange="saveComment('${sub.id}',this.value)" placeholder="Comments"></textarea>`;
+    container.appendChild(div);
+  });
+  updateProgress();
+}
+
+function ratingUI(sub){
+  let qs=sub.type==="lab"?labQuestions:theoryQuestions;
+  return qs.map(q=>`<label>${q}</label>
+    <input type="number" min="1" max="5"
+    onchange="saveRating('${sub.id}','${q}',this.value)">`).join("");
+}
+
+function saveRating(id,f,v){
+  if(!responses[id]) responses[id]={ratings:{}};
+  responses[id].ratings[f]=Number(v);
+  updateProgress();
+}
+
+function saveComment(id,v){
+  if(!responses[id]) responses[id]={};
+  responses[id].comment=v;
+}
+
+function updateProgress(){
+  let total=subjects.filter(s=>s.section===currentStudent.section).length;
+  let done=Object.keys(responses).length;
+  document.getElementById("progress").innerText=`Progress: ${done}/${total}`;
+}
+
+function submitFeedback(){
+  let total=subjects.filter(s=>s.section===currentStudent.section).length;
+  if(Object.keys(responses).length!==total){
+    alert("Complete all subjects!");
+    return;
+  }
+  localStorage.setItem(currentStudent.roll,JSON.stringify(responses));
+  alert("Submitted!");
+  location.reload();
+}
+
+function loadAnalytics(){
+  let summary={};
+  students.forEach(s=>{
+    let d=JSON.parse(localStorage.getItem(s.roll));
+    if(!d) return;
+    Object.entries(d).forEach(([sub,res])=>{
+      if(!summary[sub]) summary[sub]={total:0,count:0};
+      let vals=Object.values(res.ratings);
+      let avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+      summary[sub].total+=avg;
+      summary[sub].count++;
+    });
+  });
+
+  let labels=[],values=[],colors=[];
+  Object.entries(summary).forEach(([k,v])=>{
+    let avg=v.total/v.count;
+    labels.push(k);
+    values.push(avg.toFixed(2));
+    colors.push(avg>4?"green":avg<2.5?"red":"blue");
+  });
+
+  new Chart(document.getElementById("chart"),{
+    type:"bar",
+    data:{labels,datasets:[{data:values,backgroundColor:colors}]}
+  });
+}
+
+function downloadCSV(){
+  let csv="Roll,Subject,Average\n";
+  students.forEach(s=>{
+    let d=JSON.parse(localStorage.getItem(s.roll));
+    if(!d) return;
+    Object.entries(d).forEach(([sub,res])=>{
+      let vals=Object.values(res.ratings);
+      let avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+      csv+=`${s.roll},${sub},${avg.toFixed(2)}\n`;
+    });
+  });
+  let blob=new Blob([csv],{type:"text/csv"});
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="report.csv";
+  a.click();
+}
+
+</script>
+</body>
+</html>
