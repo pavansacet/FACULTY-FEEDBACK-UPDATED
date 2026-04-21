@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CSE Faculty Feedback System</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial; background:#eef2f7; margin:0; padding:20px;}
+    h2 { text-align:center; }
+    .card { background:#fff; padding:15px; margin:10px auto; border-radius:10px; max-width:650px; box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+    input, button, textarea { width:100%; padding:10px; margin:5px 0;}
+    button { background:#007bff; color:#fff; border:none; border-radius:5px;}
+    textarea { resize:vertical; }
+    .hidden { display:none; }
+    .progress { color:green; font-weight:bold; }
+    label { font-size:14px; }
+  </style>
+</head>
+
+<body>
+
+<h2>🎓 CSE Faculty Feedback System</h2>
+
+<div id="login" class="card">
+  <h3>Student Login</h3>
+  <input id="roll" placeholder="Roll Number">
+  <input id="name" placeholder="Name">
+  <button onclick="login()">Login</button>
+  <button onclick="showAdmin()">Admin</button>
+</div>
+
+<div id="feedback" class="hidden">
+  <div class="card">
+    <h3>Feedback Form</h3>
+    <p id="progress" class="progress"></p>
+    <div id="subjects"></div>
+    <button onclick="submitFeedback()">Submit</button>
+  </div>
+</div>
+
+<div id="admin" class="hidden">
+  <div class="card">
+    <h3>Admin Dashboard</h3>
+    <canvas id="chart"></canvas>
+    <button onclick="downloadCSV()">Download CSV</button>
+  </div>
+</div>
+
+<script>
+
+const students = [
+  {roll:"21CSE001", name:"PAVAN", section:"CSE 1"},
+  {roll:"21CSE002", name:"RAVI", section:"CSE 1"}
+];
+
+const subjects = [
+  {id:"DS", name:"Data Structures", faculty:"Dr. Ramesh", section:"CSE 1", type:"theory"},
+  {id:"DBMS_LAB", name:"DBMS Lab", faculty:"Dr. Sita", section:"CSE 1", type:"lab"}
+];
+
+const theoryQuestions = [
+  "Teaching Clarity","Subject Knowledge","Interaction","Punctuality",
+  "Doubt Clarification","Syllabus Coverage","Real-world Examples","Overall Satisfaction"
+];
+
+const labQuestions = [
+  "Lab Equipment Availability","Experiment Explanation","Hands-on Support","Lab Organization",
+  "Safety Practices","Time Management","Record Guidance","Overall Lab Experience"
+];
+
+let currentStudent = null;
+let responses = {};
+
+function login(){
+  const roll = document.getElementById("roll").value.trim();
+  const name = document.getElementById("name").value.trim().toUpperCase();
+
+  const student = students.find(s => s.roll === roll && s.name === name);
+
+  if(!student){
+    alert("Invalid Credentials");
+    return;
+  }
+
+  if(localStorage.getItem(roll)){
+    alert("Already Submitted!");
+    return;
+  }
+
+  currentStudent = student;
+
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("feedback").classList.remove("hidden");
+
+  loadSubjects();
+}
+
+function loadSubjects(){
+  const container = document.getElementById("subjects");
+  container.innerHTML = "";
+
+  const secSubjects = subjects.filter(s => s.section === currentStudent.section);
+
+  secSubjects.forEach(sub => {
+    const div = document.createElement("div");
+    div.className = "card";
+
+    div.innerHTML = `
+      <h4>${sub.name} (${sub.faculty})</h4>
+      ${ratingUI(sub)}
+      <textarea placeholder="Comments (optional)" onchange="saveComment('${sub.id}',this.value)"></textarea>
+    `;
+
+    container.appendChild(div);
+  });
+
+  updateProgress();
+}
+
+function ratingUI(sub){
+  const questions = sub.type === "lab" ? labQuestions : theoryQuestions;
+
+  return questions.map(q => `
+    <label>${q}</label>
+    <input type="number" min="1" max="5"
+      onchange="saveRating('${sub.id}','${q}',this.value)">
+  `).join("");
+}
+
+function saveRating(id, field, value){
+  if(!responses[id]) responses[id] = {ratings:{}};
+  responses[id].ratings[field] = Number(value);
+  updateProgress();
+}
+
+function saveComment(id, val){
+  if(!responses[id]) responses[id] = {};
+  responses[id].comment = val;
+}
+
+function updateProgress(){
+  const total = subjects.filter(s => s.section === currentStudent.section).length;
+  const done = Object.keys(responses).length;
+
+  document.getElementById("progress").innerText = `Progress: ${done}/${total}`;
+}
+
+function submitFeedback(){
+  const total = subjects.filter(s => s.section === currentStudent.section).length;
+
+  if(Object.keys(responses).length !== total){
+    alert("Please complete all subjects!");
+    return;
+  }
+
+  localStorage.setItem(currentStudent.roll, JSON.stringify(responses));
+
+  alert("Feedback Submitted Successfully!");
+  location.reload();
+}
+
+function showAdmin(){
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("admin").classList.remove("hidden");
+  loadAnalytics();
+}
+
+function loadAnalytics(){
+  let summary = {};
+
+  students.forEach(s => {
+    const data = JSON.parse(localStorage.getItem(s.roll));
+    if(!data) return;
+
+    Object.entries(data).forEach(([sub,res]) => {
+      if(!summary[sub]) summary[sub] = {total:0,count:0};
+
+      const values = Object.values(res.ratings);
+      const avg = values.reduce((a,b)=>a+b,0) / values.length;
+
+      summary[sub].total += avg;
+      summary[sub].count++;
+    });
+  });
+
+  const labels = [];
+  const values = [];
+
+  Object.entries(summary).forEach(([k,v])=>{
+    labels.push(k);
+    values.push((v.total/v.count).toFixed(2));
+  });
+
+  new Chart(document.getElementById("chart"), {
+    type:"bar",
+    data:{
+      labels,
+      datasets:[{label:"Average Rating", data:values}]
+    }
+  });
+}
+
+function downloadCSV(){
+  let csv = "Roll,Subject,Average\n";
+
+  students.forEach(s => {
+    const data = JSON.parse(localStorage.getItem(s.roll));
+    if(!data) return;
+
+    Object.entries(data).forEach(([sub,res]) => {
+      const values = Object.values(res.ratings);
+      const avg = values.reduce((a,b)=>a+b,0) / values.length;
+
+      csv += `${s.roll},${sub},${avg.toFixed(2)}\n`;
+    });
+  });
+
+  const blob = new Blob([csv], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "feedback_report.csv";
+  a.click();
+}
+
+</script>
+
+</body>
+</html>
